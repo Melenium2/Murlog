@@ -43,3 +43,11 @@ func (c *Config) CallerPref() {
 		return fmt.Sprintf("caller=%s:%d", file[idx+1:], row)
 	})
 }
+
+func (c *Config) CallerCustomPref(n int) {
+	c.Pref(func() interface{} {
+		_, file, row, _ := runtime.Caller(n)
+		idx := strings.LastIndexByte(file, '/')
+		return fmt.Sprintf("caller=%s:%d", file[idx+1:], row)
+	})
+}
