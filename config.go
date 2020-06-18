@@ -38,7 +38,7 @@ func (c *Config) TimePref(format string) {
 
 func (c *Config) CallerPref() {
 	c.Pref(func() interface{} {
-		_, file, row, _ := runtime.Caller(2)
+		_, file, row, _ := runtime.Caller(3)
 		idx := strings.LastIndexByte(file, '/')
 		return fmt.Sprintf("caller=%s:%d line", file[idx+1:], row)
 	})
