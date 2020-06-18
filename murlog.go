@@ -94,7 +94,7 @@ func (m murlogimpl) log(keyvals ...interface{}) string {
 		if (i+1)%2 == 0 {
 			sep = " "
 		}
-		log += fmt.Sprintf("%s%s", s, sep)
+		log += fmt.Sprintf("%v%s", s, sep)
 	}
 
 	return log
