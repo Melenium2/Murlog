@@ -80,9 +80,8 @@ restart:
 func (m murlogimpl) constructPrefixes() string {
 	log := ""
 	for _, v := range m.config.prefixes {
-		log += fmt.Sprintf("%v \t", v())
+		log += fmt.Sprintf("%v ", v())
 	}
-
 	return log
 }
 
