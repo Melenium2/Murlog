@@ -18,34 +18,48 @@ type murlogimpl struct {
 	config *Config
 }
 
+/*
+	Create instance of logger interface.
+ */
 func NewLogger(murfig *Config) Logger {
 	return &murlogimpl{
 		config: murfig,
 	}
 }
 
+/*
+	Print values from params to os.stdout.
+	If external logger was provide, func will sent log to the external logger.
+ */
 func (m murlogimpl) Log(keyvals ...interface{}) error {
 	l := m.log(keyvals...)
 	fmt.Fprintf(os.Stdout, "%s\n", "[Info]\t" + l)
 
-	if m.config.iLogger {
+	if m.config.eLogger {
 		go m.sendInternal("Info", l)
 	}
 
 	return nil
 }
 
+/*
+	Print values from params to os.stderr.
+	If external logger was provide, func will sent log to the external logger.
+ */
 func (m murlogimpl) ErrorLog(keyvals ...interface{}) error {
 	e := m.log(keyvals...)
 	fmt.Fprintf(os.Stderr, "%s\n", "[Error]\t" + e)
 
-	if m.config.iLogger {
+	if m.config.eLogger {
 		go m.sendInternal("Error", e)
 	}
 
 	return nil
 }
 
+/*
+	Send log to external logger. Func will be restarted if connection problem will be represent.
+ */
 func (m murlogimpl) sendInternal(msgType, log string) {
 	checkpoint := 0
 	b := bytes.Buffer{}
@@ -77,6 +91,9 @@ restart:
 	}
 }
 
+/*
+	Func call prefix func and get his values as a string.
+ */
 func (m murlogimpl) constructPrefixes() string {
 	log := ""
 	for _, v := range m.config.prefixes {
@@ -85,6 +102,9 @@ func (m murlogimpl) constructPrefixes() string {
 	return log
 }
 
+/*
+	Func construct full log string and return her.
+ */
 func (m murlogimpl) log(keyvals ...interface{}) string {
 	log := m.constructPrefixes()
 
@@ -101,6 +121,7 @@ func (m murlogimpl) log(keyvals ...interface{}) string {
 
 type emptymurlogger struct {}
 
+// Empty logger instance for tests
 func NewNopLogger() Logger {
 	return emptymurlogger{}
 }
