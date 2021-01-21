@@ -1,64 +1,54 @@
-package murlog
+package murlog_test
 
 import (
+	murlog "github.com/Melenium2/Murlog"
 	"github.com/stretchr/testify/assert"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-	"time"
 )
 
-func TestNewLogger_Log_ShouldReturnOnlyOneCustomPrefix(t *testing.T) {
-	c := NewConfig()
-	c.Pref(func() interface{} {
-		return "[Info]"
+func TestNewLogger_Log_ShouldPrintTextWithFormat(t *testing.T) {
+	l := murlog.New(murlog.Config{
+		Format: "${cyan}msg = ${white}${default}\n",
 	})
-	l := NewLogger(c)
 
-	assert.NoError(t, l.Log())
+	 l("privet sosed")
 }
 
-func TestNewLogger_Log_ShouldReturnCallerPrefixAndTimestampPrefix(t *testing.T) {
-	c := NewConfig()
-	c.TimePref(time.ANSIC)
-	c.CallerPref()
-	l := NewLogger(c)
+func TestNewLogger_Log_ShouldPrintDefaultText(t *testing.T) {
+	l := murlog.New()
 
-	assert.NoError(t, l.Log())
+	l("privet sosed")
 }
 
-func TestNewLogger_Log_ShouldReturnCallerPrefixAndTimestampPrefixAndCustomPrefix(t *testing.T) {
-	c := NewConfig()
-	c.TimePref(time.ANSIC)
-	c.CallerPref()
-	c.Pref(func() interface{} {
-		return "[Error]"
+func TestNewLogger_Log_ShouldPrintTextIfRequestComplete(t *testing.T) {
+	log := murlog.NewMiddleware(murlog.Config{
+		Format: "${red}${time} ${cyan}${method} ${path} ${magenta}${code}${reset} ${latency} ${default}\n",
 	})
-	l := NewLogger(c)
 
-	assert.NoError(t, l.Log())
-}
-
-func TestNewLogger_Log_ShouldReturnDefaultPrefixesAndMessage(t *testing.T) {
-	c := NewConfig()
-	c.TimePref(time.ANSIC)
-	c.CallerPref()
-	c.Pref(func() interface{} {
-		return "service=guard"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
 	})
-	l := NewLogger(c)
+	req, err := http.NewRequest("GET", "/test-check", nil)
+	assert.NoError(t, err)
 
-	assert.NoError(t, l.Log("action", "start"))
+	res := httptest.NewRecorder()
+
+	log(handler).ServeHTTP(res, req)
 }
 
-func TestNewLogger_Log_ShouldReturnErrorMessageWithDefaultPrefixes(t *testing.T) {
-	c := NewConfig()
-	c.TimePref(time.ANSIC)
-	c.CallerPref()
-	c.Pref(func() interface{} {
-		return "service=guard"
+func TestNewLogger_Log_ShouldPrintTextIfRequestCompleteWithoutConfig(t *testing.T) {
+	log := murlog.NewMiddleware()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
 	})
-	l := NewLogger(c)
+	req, err := http.NewRequest("GET", "/test-check", nil)
+	assert.NoError(t, err)
 
-	assert.NoError(t, l.ErrorLog("error", "can not start"))
+	res := httptest.NewRecorder()
+
+	log(handler).ServeHTTP(res, req)
 }
-
 
