@@ -91,9 +91,11 @@ func NewMiddleware(config ...Config) LogMiddlewareFunc {
 	var c Config
 	if len(config) == 0 {
 		c.Format = defaultFormat
-	} else if config[0].Format == "" {
+	} else {
 		c = config[0]
-		c.Format = defaultFormat
+		if c.Format == "" {
+			c.Format = defaultFormat
+		}
 	}
 
 	log := New(c)

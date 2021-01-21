@@ -10,10 +10,25 @@ import (
 )
 
 type Config struct {
-	Format       string
-	TimeZone     string
+	// Format define the string with logging tags
+	// Optional.
+	// Default: ${red}[${time}] ${white}- ${default}
+	Format string
+	// TimeZone can be specified, such as "UTC" or "Asia/Shanghai", etc
+	// Optional.
+	// Default: Local
+	TimeZone string
+	// // TimeFormat
+	//	Optional.
+	//	Default: 15:04:05
 	TimeFormat   string
+	// TimeInterval is the delay before the timestamp is updated
+	// Optional.
+	// Default: 500 * time.Millisecond
 	TimeInterval time.Duration
+	// Output is a writter where logs are written
+	// Optional.
+	// Default: os.Stderr
 	Output       io.Writer
 
 	enableColors     bool
@@ -34,7 +49,7 @@ var DefaultConfig = Config{
 func defaultConfig(conf ...Config) Config {
 	var c Config
 	if len(conf) == 0 {
-		c =  DefaultConfig
+		c = DefaultConfig
 	} else {
 		c = conf[0]
 		if c.Format == "" {
