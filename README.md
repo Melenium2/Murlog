@@ -128,22 +128,30 @@ The output will be colored if your CMD supports it
 ### Variables
 ```go
 const (
-	TimeTag    = "time"
-	LatencyTag = "latency"
-	MethodTag  = "method"
-	CodeTag    = "code"
-	PathTag    = "path"
-	DefaultTag = "default"
-
-	Black   = "black"
-	Red     = "red"
-	Green   = "green"
-	Yellow  = "yellow"
-	Blue    = "blue"
-	Magenta = "magenta"
-	Cyan    = "cyan"
-	White   = "white"
-	Reset   = "reset"
+    // Formatted timestamp
+    TimeTag    = "time"
+    // Indicates a response delay
+    LatencyTag = "latency"
+    // Request method
+    MethodTag  = "method"
+    // Response code
+    CodeTag    = "code"
+    // Request uri
+    PathTag    = "path"
+    // Tag for default output
+    // For example this is just text or error
+    DefaultTag = "default"
+    
+    // CMD Colors
+    Black   = "black"
+    Red     = "red"
+    Green   = "green"
+    Yellow  = "yellow"
+    Blue    = "blue"
+    Magenta = "magenta"
+    Cyan    = "cyan"
+    White   = "white"
+    Reset   = "reset"
 )
 ```
 

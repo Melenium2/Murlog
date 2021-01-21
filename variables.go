@@ -1,13 +1,21 @@
 package murlog
 
 const (
+	// Formatted timestamp
 	TimeTag    = "time"
+	// Indicates a response delay
 	LatencyTag = "latency"
+	// Request method
 	MethodTag  = "method"
+	// Response code
 	CodeTag    = "code"
+	// Request uri
 	PathTag    = "path"
+	// Tag for default output
+	// For example this is just text or error
 	DefaultTag = "default"
 
+	// CMD Colors
 	Black   = "black"
 	Red     = "red"
 	Green   = "green"
