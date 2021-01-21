@@ -12,9 +12,24 @@ import (
 	"time"
 )
 
+// LogFunc logs any string (v) content.
+//
+// Optional. with map[string]string you can pass additional params
+// provided by your Config format field
+//
+// By default LogFunc provided only `time` and `default` tags to output
 type LogFunc func(v string, kv ...map[string]string)
+
+// LogMiddlewareFunc logs all http request.
+//
+// All configuration should be in Config
+//
+// By default output has format:
+//
+// "$[${time}] ${method} ${path} - ${code} ${latency} ${default}"
 type LogMiddlewareFunc func(next http.Handler) http.Handler
 
+// Create LogFunc with given config or sets by default
 func New(config ...Config) LogFunc {
 	cfg := defaultConfig(config...)
 
@@ -86,6 +101,7 @@ func New(config ...Config) LogFunc {
 	}
 }
 
+// NewMiddleware creates LogMiddlewareFunc for http middleware
 func NewMiddleware(config ...Config) LogMiddlewareFunc {
 	defaultFormat := "${red}[${time}] ${cyan}${method} ${path} - ${magenta}${code}${reset} ${latency} ${default}\n"
 	var c Config
