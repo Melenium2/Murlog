@@ -1,64 +1,84 @@
-package murlog
+package murlog_test
 
 import (
+	murlog "github.com/Melenium2/Murlog"
 	"github.com/stretchr/testify/assert"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
 
-func TestNewLogger_Log_ShouldReturnOnlyOneCustomPrefix(t *testing.T) {
-	c := NewConfig()
-	c.Pref(func() interface{} {
-		return "[Info]"
+func TestNewLogger_Default(t *testing.T) {
+	var tt = []struct {
+		name    string
+		config  murlog.Config
+		message string
+	}{
+		{
+			name:    "contains default formatting and simple message",
+			config:  murlog.Config{},
+			message: "simple message",
+		},
+		{
+			name: "contains multicolor output with simple message",
+			config: murlog.Config{
+				Format: "${cyan}msg = ${white}${default}\n",
+			},
+			message: "simple message",
+		},
+	}
+
+	for _, test := range tt {
+		t.Run(test.name, func(t *testing.T) {
+			rescueStdout := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			test.config.Output = os.Stdout
+			l := murlog.New(test.config)
+
+			l(test.message)
+
+			_ = w.Close()
+			out, _ := ioutil.ReadAll(r)
+			os.Stdout = rescueStdout
+
+			assert.Contains(t, string(out), test.message)
+		})
+	}
+}
+
+func TestNewLogger_Middleware_ShouldPrintTextIfRequestComplete(t *testing.T) {
+	log := murlog.NewMiddleware(murlog.Config{
+		Format: "${red}${time} ${cyan}${method} ${path} ${magenta}${code}${reset} ${latency} ${default}\n",
 	})
-	l := NewLogger(c)
 
-	assert.NoError(t, l.Log())
-}
-
-func TestNewLogger_Log_ShouldReturnCallerPrefixAndTimestampPrefix(t *testing.T) {
-	c := NewConfig()
-	c.TimePref(time.ANSIC)
-	c.CallerPref()
-	l := NewLogger(c)
-
-	assert.NoError(t, l.Log())
-}
-
-func TestNewLogger_Log_ShouldReturnCallerPrefixAndTimestampPrefixAndCustomPrefix(t *testing.T) {
-	c := NewConfig()
-	c.TimePref(time.ANSIC)
-	c.CallerPref()
-	c.Pref(func() interface{} {
-		return "[Error]"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Millisecond * 500)
+		w.WriteHeader(200)
 	})
-	l := NewLogger(c)
+	req, err := http.NewRequest("GET", "/test-check", nil)
+	assert.NoError(t, err)
 
-	assert.NoError(t, l.Log())
+	res := httptest.NewRecorder()
+
+	log(handler).ServeHTTP(res, req)
 }
 
-func TestNewLogger_Log_ShouldReturnDefaultPrefixesAndMessage(t *testing.T) {
-	c := NewConfig()
-	c.TimePref(time.ANSIC)
-	c.CallerPref()
-	c.Pref(func() interface{} {
-		return "service=guard"
+func TestNewLogger_Log_ShouldPrintTextIfRequestCompleteWithDefaultConfig(t *testing.T) {
+	log := murlog.NewMiddleware()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Millisecond * 200)
+		panic("Error message")
 	})
-	l := NewLogger(c)
+	req, err := http.NewRequest("GET", "/test-check", nil)
+	assert.NoError(t, err)
 
-	assert.NoError(t, l.Log("action", "start"))
+	res := httptest.NewRecorder()
+
+	log(handler).ServeHTTP(res, req)
 }
-
-func TestNewLogger_Log_ShouldReturnErrorMessageWithDefaultPrefixes(t *testing.T) {
-	c := NewConfig()
-	c.TimePref(time.ANSIC)
-	c.CallerPref()
-	c.Pref(func() interface{} {
-		return "service=guard"
-	})
-	l := NewLogger(c)
-
-	assert.NoError(t, l.ErrorLog("error", "can not start"))
-}
-
-

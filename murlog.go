@@ -1,137 +1,194 @@
 package murlog
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
+	"github.com/Melenium2/Murlog/fasttemplate"
+	"io"
 	"net/http"
-	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
-type Logger interface {
-	Log(keyvals ...interface{}) error
-	ErrorLog(keyvals ...interface{}) error
-}
+// LogFunc logs any string (v) content.
+//
+// Optional. with map[string]string you can pass additional params
+// provided by your Config format field
+//
+// By default LogFunc provided only `time` and `default` tags to output
+type LogFunc func(v string, kv ...map[string]string)
 
-type murlogimpl struct {
-	config *Config
-}
+// LogMiddlewareFunc logs all http request.
+//
+// All configuration should be in Config
+//
+// By default output has format:
+//
+// "$[${time}] ${method} ${path} - ${code} ${latency} ${default}"
+type LogMiddlewareFunc func(next http.Handler) http.Handler
 
-/*
-	Create instance of logger interface.
- */
-func NewLogger(murfig *Config) Logger {
-	return &murlogimpl{
-		config: murfig,
+// Create LogFunc with given config or sets by default
+func New(config ...Config) LogFunc {
+	cfg := defaultConfig(config...)
+
+	var timestamp atomic.Value
+	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+
+	if strings.Contains(cfg.Format, "${time}") {
+		go func() {
+			time.Sleep(cfg.TimeInterval)
+			timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+		}()
+	}
+
+	tmpl := fasttemplate.New(cfg.Format, "${", "}")
+
+	var (
+		mu sync.Mutex
+	)
+
+	return func(v string, kv ...map[string]string) {
+		var (
+			err       error
+			keyValues map[string]string
+		)
+		if len(kv) > 0 {
+			keyValues = kv[0]
+		}
+
+		buf := fasttemplate.Get()
+
+		if cfg.enableColors {
+			_, _ = buf.WriteString(fmt.Sprintf("%s - %s\n",
+				timestamp.Load().(string),
+				v,
+			))
+
+			_, _ = cfg.Output.Write(buf.Bytes())
+
+			fasttemplate.Put(buf)
+
+			return
+		}
+
+		{
+			if keyValues == nil {
+				keyValues = make(map[string]string)
+			}
+			keyValues["default"] = v
+			keyValues["time"] = timestamp.Load().(string)
+		}
+
+		err = fillBuffer(tmpl, buf, keyValues)
+
+		if err != nil {
+			_, _ = buf.WriteString(err.Error())
+		}
+
+		mu.Lock()
+
+		if _, err := cfg.Output.Write(buf.Bytes()); err != nil {
+			if _, err := cfg.Output.Write([]byte(err.Error())); err != nil {
+				// ??? =)
+			}
+		}
+
+		mu.Unlock()
+
+		fasttemplate.Put(buf)
 	}
 }
 
-/*
-	Print values from params to os.stdout.
-	If external logger was provide, func will sent log to the external logger.
- */
-func (m murlogimpl) Log(keyvals ...interface{}) error {
-	l := m.log(keyvals...)
-	fmt.Fprintf(os.Stdout, "%s\n", "[Info]\t" + l)
-
-	if m.config.eLogger {
-		go m.sendInternal("Info", l)
+// NewMiddleware creates LogMiddlewareFunc for http middleware
+func NewMiddleware(config ...Config) LogMiddlewareFunc {
+	defaultFormat := "${red}[${time}] ${cyan}${method} ${path} - ${magenta}${code}${reset} ${latency} ${default}\n"
+	var c Config
+	if len(config) == 0 {
+		c.Format = defaultFormat
+	} else {
+		c = config[0]
+		if c.Format == "" {
+			c.Format = defaultFormat
+		}
 	}
 
-	return nil
-}
+	log := New(c)
 
-/*
-	Print values from params to os.stderr.
-	If external logger was provide, func will sent log to the external logger.
- */
-func (m murlogimpl) ErrorLog(keyvals ...interface{}) error {
-	e := m.log(keyvals...)
-	fmt.Fprintf(os.Stderr, "%s\n", "[Error]\t" + e)
+	return func(next http.Handler) http.Handler {
+		var (
+			start, end time.Time
+		)
 
-	if m.config.eLogger {
-		go m.sendInternal("Error", e)
+		fn := func(w http.ResponseWriter, r *http.Request) {
+			wrappedHeader := WrapResponseWriter(w)
+			var kvs = map[string]string{
+				"path":   r.URL.EscapedPath(),
+				"method": r.Method,
+			}
+
+			defer func() {
+				if err := recover(); err != nil {
+					wrappedHeader.WriteHeader(http.StatusInternalServerError)
+					kvs["code"] = strconv.Itoa(wrappedHeader.Status)
+
+					log(err.(string), kvs)
+				}
+			}()
+
+			{
+				start = time.Now()
+				next.ServeHTTP(w, r)
+				end = time.Now()
+
+				kvs["latency"] = end.Sub(start).String()
+				kvs["code"] = strconv.Itoa(wrappedHeader.Status)
+			}
+			log("", kvs)
+		}
+
+		return http.HandlerFunc(fn)
 	}
-
-	return nil
 }
 
-/*
-	Send log to external logger. Func will be restarted if connection problem will be represent.
- */
-func (m murlogimpl) sendInternal(msgType, log string) {
-	checkpoint := 0
-	b := bytes.Buffer{}
-	json.NewEncoder(&b).Encode(map[string]string{
-		"message_type": msgType,
-		"log":          log,
+func fillBuffer(tmpl *fasttemplate.Template, buf *fasttemplate.ByteBuffer, kv map[string]string) error {
+	_, err := tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
+		switch tag {
+		case TimeTag:
+			return buf.WriteString(kv["time"])
+		case DefaultTag:
+			return buf.WriteString(kv["default"])
+		case LatencyTag:
+			return buf.WriteString(kv["latency"])
+		case MethodTag:
+			return buf.WriteString(kv["method"])
+		case CodeTag:
+			return buf.WriteString(kv["code"])
+		case PathTag:
+			return buf.WriteString(kv["path"])
+		case Black:
+			return buf.WriteString(cBlack)
+		case Red:
+			return buf.WriteString(cRed)
+		case Green:
+			return buf.WriteString(cGreen)
+		case Yellow:
+			return buf.WriteString(cYellow)
+		case Blue:
+			return buf.WriteString(cBlue)
+		case Magenta:
+			return buf.WriteString(cMagenta)
+		case Cyan:
+			return buf.WriteString(cCyan)
+		case White:
+			return buf.WriteString(cWhite)
+		case Reset:
+			return buf.WriteString(cReset)
+		default:
+			return 0, nil
+		}
 	})
-restart:
-	resp, err := http.Post(m.config.loggerUrl, "application/json", &b)
-	if err != nil {
-		checkpoint++
-		time.Sleep(time.Second * 15)
-		if checkpoint > 5 {
-			m.log("error", fmt.Sprintf("internal server say %v", err))
-			return
-		}
-		goto restart
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		checkpoint++
-		time.Sleep(time.Second * 15)
-		if checkpoint > 5 {
-			m.log("error", fmt.Sprintf("internal server response with %v code", resp.StatusCode))
-			return
-		}
-		goto restart
-	}
-}
-
-/*
-	Func call prefix func and get his values as a string.
- */
-func (m murlogimpl) constructPrefixes() string {
-	log := ""
-	for _, v := range m.config.prefixes {
-		log += fmt.Sprintf("%v ", v())
-	}
-	return log
-}
-
-/*
-	Func construct full log string and return her.
- */
-func (m murlogimpl) log(keyvals ...interface{}) string {
-	log := m.constructPrefixes()
-
-	for i, s := range keyvals {
-		sep := "="
-		if (i+1)%2 == 0 {
-			sep = " "
-		}
-		log += fmt.Sprintf("%v%s", s, sep)
-	}
-
-	return log
-}
-
-type emptymurlogger struct {}
-
-// Empty logger instance for tests
-func NewNopLogger() Logger {
-	return emptymurlogger{}
-}
-
-func (m emptymurlogger) Log(keyvals ...interface{}) error {
-	fmt.Fprintf(os.Stdout, "%v\n", keyvals)
-	return nil
-}
-
-func (m emptymurlogger) ErrorLog(keyvals ...interface{}) error {
-	fmt.Fprintf(os.Stdout, "%v\n", keyvals)
-	return nil
+	return err
 }
